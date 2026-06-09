@@ -134,27 +134,53 @@ export function haUDLIntensity(loadedLength: number): number {
 }
 
 /**
- * Number of notional lanes — BD 37/01, Cl. 3.2.1 (Table 14)
+ * Number of notional lanes — BD 37/01, Cl. 3.2.9.3.1 (exact table)
  *
- *  CW < 5.0 m          → 1 notional lane
- *  5.0 ≤ CW ≤ 7.5 m   → 2 notional lanes  (BD 37/01 explicit rule)
- *  CW > 7.5 m          → INT(CW / 3.65)   (minimum 2 in practice)
+ *  CW < 5.00 m                       → 1 lane  (Cl. 3.2.9.3.2)
+ *  5.00 ≤ CW ≤  7.50 m               → 2 lanes
+ *  7.50 < CW ≤ 10.95 m  (= 3×3.65)  → 3 lanes
+ *  10.95 < CW ≤ 14.60 m (= 4×3.65)  → 4 lanes
+ *  14.60 < CW ≤ 18.25 m (= 5×3.65)  → 5 lanes
+ *  18.25 < CW ≤ 21.90 m (= 6×3.65)  → 6 lanes
+ *  (pattern continues: upper bound = n × 3.65)
+ *
+ *  Formula: for CW > 7.50 → n = ceil(CW / 3.65)
+ *  This matches every row in the BD 37/01 Cl. 3.2.9.3.1 table exactly.
+ *
+ *  KEY CORRECTION vs previous implementation:
+ *  - Previous: Math.floor(CW/3.65) → gave 2 lanes for CW=8m (WRONG, should be 3)
+ *  - Correct:  Math.ceil(CW/3.65)  → gives 3 lanes for CW=8m ✓
  */
 export function notionalLanes(carriagewayWidth: number): number {
-  if (carriagewayWidth < 5.0)  return 1;
-  if (carriagewayWidth <= 7.5) return 2;
-  return Math.floor(carriagewayWidth / 3.65);
+  if (carriagewayWidth < 5.0)   return 1;  // Cl. 3.2.9.3.2
+  if (carriagewayWidth <= 7.50) return 2;  // Cl. 3.2.9.3.1 — 5.00 to 7.50 m
+  return Math.ceil(carriagewayWidth / 3.65); // Cl. 3.2.9.3.1 — above 7.50 m
 }
 
 /**
- * Lane width description string for a given carriageway width.
- * Useful for display and assumptions panel.
+ * Human-readable lane rule string citing the exact BD37/01 table row.
  */
 export function laneRuleDescription(cw: number): string {
-  if (cw < 5.0)  return `CW = ${cw.toFixed(2)} m < 5.0 m → 1 lane (BD37/01 Cl.3.2.1)`;
-  if (cw <= 7.5) return `CW = ${cw.toFixed(2)} m (5.0–7.5 m) → 2 lanes (BD37/01 Cl.3.2.1)`;
-  const n = Math.floor(cw / 3.65);
-  return `CW = ${cw.toFixed(2)} m > 7.5 m → INT(${cw.toFixed(2)}/3.65) = ${n} lanes (BD37/01 Cl.3.2.1)`;
+  if (cw < 5.0)   return `CW = ${cw.toFixed(2)} m < 5.00 m → 1 lane  (BD37/01 Cl.3.2.9.3.2)`;
+  if (cw <= 7.50) return `CW = ${cw.toFixed(2)} m (5.00–7.50 m) → 2 lanes  (BD37/01 Cl.3.2.9.3.1)`;
+  const n = Math.ceil(cw / 3.65);
+  const lo = ((n - 1) * 3.65).toFixed(2);
+  const hi = (n * 3.65).toFixed(2);
+  return `CW = ${cw.toFixed(2)} m (${lo}–${hi} m) → ${n} lanes  (BD37/01 Cl.3.2.9.3.1)`;
+}
+
+/**
+ * Cantilever length = distance from outermost beam CL to deck edge (m).
+ * Assumes girders are symmetrically centred on the deck.
+ * BD recommendation: cantilever ≤ 1.5 m.
+ */
+export function cantileverLength(
+  deckWidth: number,
+  numberOfGirders: number,
+  girderSpacing: number
+): number {
+  const outerGirderOffset = ((numberOfGirders - 1) / 2) * girderSpacing;
+  return deckWidth / 2 - outerGirderOffset;
 }
 
 // ─── HB Vehicle (BS 5400 Part 2, Cl. 6.3) ────────────────────────────────────
@@ -491,11 +517,7 @@ export function runBridgeAnalysis(
   });
 
   // ── Assumptions ──────────────────────────────────────────────────────────
-  const cwRule = laneCount === 1
-    ? 'CW < 5.0 m → 1 lane'
-    : geo.carriagewayWidth <= 7.5
-      ? `CW = ${geo.carriagewayWidth.toFixed(2)} m (5.0–7.5 m) → 2 lanes`
-      : `INT(${geo.carriagewayWidth.toFixed(2)} / 3.65) = ${laneCount} lanes`;
+  const cwRule = laneRuleDescription(geo.carriagewayWidth);
   const walkwayDesc = geo.walkwaysEnabled
     ? `Left ${geo.leftWalkwayWidth.toFixed(2)} m + Right ${geo.rightWalkwayWidth.toFixed(2)} m = ${walkwayWidth.toFixed(2)} m total.`
     : 'No walkways defined.';

@@ -1,8 +1,12 @@
 import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { AlertTriangle } from 'lucide-react';
 import { BridgeGeometry } from '../types/bridge';
 import { InputField } from './ui/InputField';
 import { ToggleField } from './ui/InputField';
-import { notionalLanes } from '../utils/calculations';
+import { notionalLanes, cantileverLength } from '../utils/calculations';
+
+const CANTILEVER_LIMIT = 1.5; // m — BD recommendation
 
 interface Props {
   value: BridgeGeometry;
@@ -28,13 +32,22 @@ export function BridgeGeometryForm({ value, onChange }: Props) {
     ? value.leftWalkwayWidth + value.rightWalkwayWidth
     : 0;
 
-  // BD37/01 lane rule label
+  // BD37/01 Cl. 3.2.9.3.1 exact table label
   const laneRule =
     cw < 5.0
-      ? 'CW < 5.0 m → 1 lane'
-      : cw <= 7.5
-      ? '5.0 ≤ CW ≤ 7.5 m → 2 lanes'
-      : `INT(${cw.toFixed(2)} / 3.65) = ${lanes} lanes`;
+      ? 'CW < 5.00 m → 1 lane  (Cl.3.2.9.3.2)'
+      : cw <= 7.50
+      ? '5.00 ≤ CW ≤ 7.50 m → 2 lanes  (Cl.3.2.9.3.1)'
+      : (() => {
+          const lo = ((lanes - 1) * 3.65).toFixed(2);
+          const hi = (lanes * 3.65).toFixed(2);
+          return `${lo} < CW ≤ ${hi} m → ${lanes} lanes  (Cl.3.2.9.3.1)`;
+        })();
+
+  // Cantilever check
+  const cantilever = cantileverLength(value.deckWidth, value.numberOfGirders, value.girderSpacing);
+  const cantileverExceeded = cantilever > CANTILEVER_LIMIT;
+  const cantileverNegative = cantilever < 0;
 
   return (
     <div className="space-y-4 mt-2">
@@ -140,6 +153,63 @@ export function BridgeGeometryForm({ value, onChange }: Props) {
         </div>
       </div>
 
+      {/* ── Cantilever Warning Banner ── */}
+      <AnimatePresence>
+        {(cantileverExceeded || cantileverNegative) && (
+          <motion.div
+            key="cantilever-warning"
+            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.97 }}
+            transition={{ duration: 0.2 }}
+            className={`flex gap-3 p-3 rounded-xl border ${
+              cantileverNegative
+                ? 'bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-700'
+                : 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700'
+            }`}
+          >
+            <AlertTriangle
+              size={18}
+              className={`flex-shrink-0 mt-0.5 ${
+                cantileverNegative ? 'text-red-500' : 'text-amber-500'
+              }`}
+            />
+            <div className="text-xs">
+              {cantileverNegative ? (
+                <>
+                  <p className="font-bold text-red-700 dark:text-red-300 mb-0.5">
+                    ⚠ Girder arrangement wider than deck
+                  </p>
+                  <p className="text-red-600 dark:text-red-400">
+                    Outermost girder extends{' '}
+                    <strong>{Math.abs(cantilever).toFixed(2)} m</strong> beyond the deck edge.
+                    Increase deck width or reduce girder spacing / number of girders.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-bold text-amber-700 dark:text-amber-300 mb-0.5">
+                    ⚠ Cantilever exceeds 1.5 m
+                  </p>
+                  <p className="text-amber-600 dark:text-amber-400">
+                    Cantilever = <strong>{cantilever.toFixed(2)} m</strong> &gt; 1.5 m limit.
+                    The deck overhang from the outermost beam to the parapet edge is{' '}
+                    <strong>{cantilever.toFixed(2)} m</strong>.
+                    Consider reducing deck width, increasing girder spacing, or adding a
+                    fascia beam closer to the parapet.
+                  </p>
+                  <p className="mt-1 text-amber-500 dark:text-amber-500 text-[10px]">
+                    Cantilever = ½ × deck width − ½ × (N−1) × spacing
+                    = {(value.deckWidth / 2).toFixed(2)} − {(((value.numberOfGirders - 1) * value.girderSpacing) / 2).toFixed(2)}
+                    = {cantilever.toFixed(2)} m
+                  </p>
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Cross-Section SVG schematic ── */}
       <CrossSectionSVG
         deckWidth={value.deckWidth}
@@ -149,6 +219,8 @@ export function BridgeGeometryForm({ value, onChange }: Props) {
         carriageway={cw}
         numberOfGirders={value.numberOfGirders}
         girderSpacing={value.girderSpacing}
+        cantilever={cantilever}
+        cantileverExceeded={cantileverExceeded}
       />
 
       {/* ── Computed Summary ── */}
@@ -170,6 +242,7 @@ export function BridgeGeometryForm({ value, onChange }: Props) {
 
         <div className="border-t border-gray-300 dark:border-gray-600 my-1" />
 
+        {/* Notional lanes */}
         <div className="flex items-center justify-between">
           <span className="text-gray-500 dark:text-gray-400">Notional lanes</span>
           <div className="text-right">
@@ -178,8 +251,38 @@ export function BridgeGeometryForm({ value, onChange }: Props) {
           </div>
         </div>
         <p className="text-[10px] text-blue-500 dark:text-blue-400 text-right">{laneRule}</p>
+
+        <div className="border-t border-gray-300 dark:border-gray-600 my-1" />
+
+        {/* Cantilever */}
+        <div className="flex items-center justify-between">
+          <span className={cantileverExceeded || cantileverNegative
+            ? 'font-semibold text-amber-600 dark:text-amber-400'
+            : 'text-gray-500 dark:text-gray-400'}>
+            Cantilever (each side)
+          </span>
+          <span className={`font-bold ${
+            cantileverNegative
+              ? 'text-red-600 dark:text-red-400'
+              : cantileverExceeded
+              ? 'text-amber-600 dark:text-amber-400'
+              : 'text-emerald-600 dark:text-emerald-400'
+          }`}>
+            {cantileverNegative ? '!' : ''}{cantilever.toFixed(3)} m
+            {cantileverExceeded && !cantileverNegative && ' ⚠'}
+          </span>
+        </div>
+        <p className="text-[10px] text-right text-gray-400 dark:text-gray-500">
+          {cantileverNegative
+            ? 'Girders wider than deck — invalid'
+            : cantileverExceeded
+            ? `Exceeds 1.50 m limit by ${(cantilever - 1.5).toFixed(3)} m`
+            : `OK — within 1.50 m limit (${(1.5 - cantilever).toFixed(3)} m margin)`}
+        </p>
+
+        <div className="border-t border-gray-300 dark:border-gray-600 my-1" />
         <p className="text-[10px] text-gray-400 dark:text-gray-500">
-          Girder arrangement: {((value.numberOfGirders - 1) * value.girderSpacing).toFixed(2)} m c/c total width
+          Girder arrangement: {((value.numberOfGirders - 1) * value.girderSpacing).toFixed(2)} m total c/c width
         </p>
       </div>
     </div>
@@ -219,16 +322,19 @@ interface SVGProps {
   carriageway: number;
   numberOfGirders: number;
   girderSpacing: number;
+  cantilever: number;
+  cantileverExceeded: boolean;
 }
 
 function CrossSectionSVG({
   deckWidth, parapetWidth, leftWalkway, rightWalkway,
   carriageway, numberOfGirders, girderSpacing,
+  cantilever, cantileverExceeded,
 }: SVGProps) {
   if (deckWidth <= 0) return null;
 
-  const W = 320, H = 90;
-  const padX = 12, padT = 14, deckH = 14, girderH = 18;
+  const W = 320, H = 110; // taller to accommodate cantilever dimension lines above deck
+  const padX = 12, padT = 28, deckH = 14, girderH = 18;
   const drawW = W - 2 * padX;
   const scale = drawW / deckWidth; // px per metre
 
@@ -319,6 +425,48 @@ function CrossSectionSVG({
             G{i + 1}
           </text>
         ))}
+
+        {/* ── Cantilever dimension lines ── */}
+        {girderXs.length > 0 && (() => {
+          const outerLeft  = girderXs[0];
+          const outerRight = girderXs[girderXs.length - 1];
+          const deckLeft   = padX;
+          const deckRight  = padX + drawW;
+          const dimY       = girderY - 6;
+          const clr        = cantileverExceeded ? '#f59e0b' : '#10b981';
+          const cantPx     = cantilever * scale; // px width of cantilever
+
+          return (
+            <g>
+              {/* Left cantilever bracket */}
+              <line x1={deckLeft}  y1={dimY - 4} x2={deckLeft}  y2={dimY + 4} stroke={clr} strokeWidth={1.2} />
+              <line x1={outerLeft} y1={dimY - 4} x2={outerLeft} y2={dimY + 4} stroke={clr} strokeWidth={1.2} />
+              <line x1={deckLeft}  y1={dimY} x2={outerLeft} y2={dimY} stroke={clr} strokeWidth={1} strokeDasharray="2 1" />
+              {cantPx > 18 && (
+                <text x={(deckLeft + outerLeft) / 2} y={dimY - 7} textAnchor="middle" fontSize={7} fill={clr} fontFamily="monospace">
+                  {cantilever.toFixed(2)}m
+                </text>
+              )}
+
+              {/* Right cantilever bracket */}
+              <line x1={deckRight}  y1={dimY - 4} x2={deckRight}  y2={dimY + 4} stroke={clr} strokeWidth={1.2} />
+              <line x1={outerRight} y1={dimY - 4} x2={outerRight} y2={dimY + 4} stroke={clr} strokeWidth={1.2} />
+              <line x1={outerRight} y1={dimY} x2={deckRight} y2={dimY} stroke={clr} strokeWidth={1} strokeDasharray="2 1" />
+              {cantPx > 18 && (
+                <text x={(outerRight + deckRight) / 2} y={dimY - 7} textAnchor="middle" fontSize={7} fill={clr} fontFamily="monospace">
+                  {cantilever.toFixed(2)}m
+                </text>
+              )}
+
+              {/* Warning label */}
+              {cantileverExceeded && (
+                <text x={W / 2} y={dimY - 15} textAnchor="middle" fontSize={8} fill="#f59e0b" fontFamily="monospace" fontWeight="bold">
+                  ⚠ CANTILEVER &gt; 1.5m
+                </text>
+              )}
+            </g>
+          );
+        })()}
 
         {/* Dimension line at bottom for deck width */}
         <line x1={padX} y1={girderY + girderH + 16} x2={padX + drawW} y2={girderY + girderH + 16} stroke="#94a3b8" strokeWidth={0.8} />
