@@ -5,10 +5,12 @@ interface InputFieldProps {
   unit?: string;
   value: number | string;
   onChange: (val: number) => void;
+  onChangeText?: (val: string) => void; // used when type="text"
   min?: number;
   max?: number;
   step?: number;
   disabled?: boolean;
+  readOnly?: boolean;
   hint?: string;
   type?: 'number' | 'text';
 }
@@ -18,13 +20,16 @@ export function InputField({
   unit,
   value,
   onChange,
+  onChangeText,
   min,
   max,
   step = 0.01,
   disabled = false,
+  readOnly = false,
   hint,
   type = 'number',
 }: InputFieldProps) {
+  const isDisabledLike = disabled || readOnly;
   return (
     <div>
       <label className="input-label">
@@ -32,17 +37,31 @@ export function InputField({
         {unit && (
           <span className="ml-1.5 text-xs font-normal text-gray-400 dark:text-gray-500">({unit})</span>
         )}
+        {readOnly && (
+          <span className="ml-1.5 text-xs font-normal text-blue-500 dark:text-blue-400">(computed)</span>
+        )}
       </label>
       <div className="relative">
         <input
           type={type}
-          className={`form-input pr-${unit ? '16' : '3'} ${disabled ? 'opacity-50 cursor-not-allowed bg-gray-50 dark:bg-gray-900' : ''}`}
+          className={`form-input ${unit ? 'pr-16' : 'pr-3'} ${
+            isDisabledLike
+              ? 'opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-900'
+              : ''
+          } ${readOnly ? 'border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300' : ''}`}
           value={value}
           min={min}
           max={max}
           step={step}
           disabled={disabled}
-          onChange={e => onChange(parseFloat(e.target.value) || 0)}
+          readOnly={readOnly}
+          onChange={e => {
+            if (type === 'text') {
+              onChangeText?.(e.target.value);
+            } else {
+              onChange(parseFloat(e.target.value) || 0);
+            }
+          }}
         />
         {unit && (
           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 dark:text-gray-500 pointer-events-none font-mono">

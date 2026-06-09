@@ -14,8 +14,13 @@ const DEFAULT_GEOMETRY: BridgeGeometry = {
   spanLength: 30,
   numberOfGirders: 5,
   girderSpacing: 1.75,
-  deckWidth: 10,
-  carriagewayWidth: 7.3,
+  deckWidth: 10.5,
+  parapetWidth: 0.5,
+  walkwaysEnabled: true,
+  leftWalkwayWidth: 1.0,
+  rightWalkwayWidth: 1.0,
+  // carriageway = 10.5 − 2×0.5 − 1.0 − 1.0 = 7.5 m → 2 lanes (BD37/01)
+  carriagewayWidth: 7.5,
 };
 
 const DEFAULT_GIRDER: GirderProperties = {
@@ -42,7 +47,8 @@ const DEFAULT_HIGHWAY: HighwayLoadInputs = {
 };
 
 // ─── Persistence keys ─────────────────────────────────────────────────────────
-const STORAGE_KEY = 'bridgecalc_inputs_v1';
+// Bump version when schema changes to avoid stale data issues
+const STORAGE_KEY = 'bridgecalc_inputs_v2';
 
 function loadSavedInputs() {
   try {

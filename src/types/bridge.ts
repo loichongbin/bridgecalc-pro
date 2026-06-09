@@ -1,11 +1,16 @@
 // ─── Bridge Geometry ──────────────────────────────────────────────────────────
 
 export interface BridgeGeometry {
-  spanLength: number;        // m — simply supported span
-  numberOfGirders: number;   // 1–10
-  girderSpacing: number;     // m — centre-to-centre
-  deckWidth: number;         // m — overall deck width
-  carriagewayWidth: number;  // m — clear carriageway width
+  spanLength: number;          // m — simply supported span
+  numberOfGirders: number;     // 1–10
+  girderSpacing: number;       // m — centre-to-centre
+  deckWidth: number;           // m — overall (total) deck width
+  parapetWidth: number;        // m — each side (both parapets assumed equal)
+  walkwaysEnabled: boolean;    // whether pedestrian walkways are present
+  leftWalkwayWidth: number;    // m — walkway on left (upstream) side
+  rightWalkwayWidth: number;   // m — walkway on right (downstream) side
+  // ↓ Computed field — auto-updated from above; do not edit manually
+  carriagewayWidth: number;    // m = deckWidth − 2×parapet − walkways
 }
 
 // ─── Girder Properties ────────────────────────────────────────────────────────

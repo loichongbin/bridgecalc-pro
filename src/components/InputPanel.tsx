@@ -69,6 +69,9 @@ export function InputPanel({
             value={deadLoads}
             onChange={onDeadLoadChange}
             deckWidth={geometry.deckWidth}
+            walkwaysEnabled={geometry.walkwaysEnabled}
+            leftWalkwayWidth={geometry.leftWalkwayWidth}
+            rightWalkwayWidth={geometry.rightWalkwayWidth}
           />
         </CollapsibleSection>
 

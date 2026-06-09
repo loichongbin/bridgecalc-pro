@@ -133,10 +133,28 @@ export function haUDLIntensity(loadedLength: number): number {
   return 36 + 3360 / loadedLength;
 }
 
-/** Number of notional lanes for a carriageway width (BD 37/01, Cl. 3.2) */
+/**
+ * Number of notional lanes — BD 37/01, Cl. 3.2.1 (Table 14)
+ *
+ *  CW < 5.0 m          → 1 notional lane
+ *  5.0 ≤ CW ≤ 7.5 m   → 2 notional lanes  (BD 37/01 explicit rule)
+ *  CW > 7.5 m          → INT(CW / 3.65)   (minimum 2 in practice)
+ */
 export function notionalLanes(carriagewayWidth: number): number {
-  if (carriagewayWidth < 5.0) return 1;
+  if (carriagewayWidth < 5.0)  return 1;
+  if (carriagewayWidth <= 7.5) return 2;
   return Math.floor(carriagewayWidth / 3.65);
+}
+
+/**
+ * Lane width description string for a given carriageway width.
+ * Useful for display and assumptions panel.
+ */
+export function laneRuleDescription(cw: number): string {
+  if (cw < 5.0)  return `CW = ${cw.toFixed(2)} m < 5.0 m → 1 lane (BD37/01 Cl.3.2.1)`;
+  if (cw <= 7.5) return `CW = ${cw.toFixed(2)} m (5.0–7.5 m) → 2 lanes (BD37/01 Cl.3.2.1)`;
+  const n = Math.floor(cw / 3.65);
+  return `CW = ${cw.toFixed(2)} m > 7.5 m → INT(${cw.toFixed(2)}/3.65) = ${n} lanes (BD37/01 Cl.3.2.1)`;
 }
 
 // ─── HB Vehicle (BS 5400 Part 2, Cl. 6.3) ────────────────────────────────────
@@ -298,7 +316,11 @@ export function runBridgeAnalysis(
   const totalGirderSW = girder.selfWeight * geo.numberOfGirders;
   const totalSIDL = sidlIntensity * geo.deckWidth;
   const totalPremix = premixIntensity * geo.deckWidth;
-  const totalPed = pedIntensity * (geo.deckWidth - geo.carriagewayWidth); // on footways only
+  // Pedestrian load applies to walkways only (not parapets)
+  const walkwayWidth = geo.walkwaysEnabled
+    ? (geo.leftWalkwayWidth + geo.rightWalkwayWidth)
+    : (geo.deckWidth - geo.carriagewayWidth - 2 * geo.parapetWidth); // fallback for old data
+  const totalPed = pedIntensity * Math.max(0, walkwayWidth);
 
   const totalDLUDL = totalGirderSW + totalSIDL + totalPremix + totalPed;
 
@@ -469,18 +491,31 @@ export function runBridgeAnalysis(
   });
 
   // ── Assumptions ──────────────────────────────────────────────────────────
+  const cwRule = laneCount === 1
+    ? 'CW < 5.0 m → 1 lane'
+    : geo.carriagewayWidth <= 7.5
+      ? `CW = ${geo.carriagewayWidth.toFixed(2)} m (5.0–7.5 m) → 2 lanes`
+      : `INT(${geo.carriagewayWidth.toFixed(2)} / 3.65) = ${laneCount} lanes`;
+  const walkwayDesc = geo.walkwaysEnabled
+    ? `Left ${geo.leftWalkwayWidth.toFixed(2)} m + Right ${geo.rightWalkwayWidth.toFixed(2)} m = ${walkwayWidth.toFixed(2)} m total.`
+    : 'No walkways defined.';
+
   const assumptions = [
     `Simply supported single-span bridge, L = ${L.toFixed(2)} m.`,
+    `Overall deck width = ${geo.deckWidth.toFixed(2)} m. Parapet = ${geo.parapetWidth.toFixed(2)} m each side.`,
+    `Walkways: ${walkwayDesc}`,
+    `Carriageway width (computed) = ${geo.carriagewayWidth.toFixed(2)} m.`,
+    `Notional lanes: ${laneCount} lane${laneCount !== 1 ? 's' : ''} per BD 37/01 Cl. 3.2.1 — ${cwRule}.`,
     `HA loading per BD 37/01: UDL = ${haW.toFixed(2)} kN/m/lane, KEL = 120 kN/lane.`,
-    `${laneCount} notional lane${laneCount > 1 ? 's' : ''} (carriageway ${geo.carriagewayWidth} m ÷ 3.65 m).`,
     `HA KEL positioned at mid-span for maximum bending moment.`,
     `HB vehicle: 4 equal axles at 1.8 m, ${hl.hbAxleSpacing + 1.8} m, ${hl.hbAxleSpacing + 3.6} m from front.`,
     `HB axle load: HB30 = ${30 * 10} kN/axle, HB45 = ${45 * 10} kN/axle.`,
     `HB vehicle position scanned over full span (300 increments) to maximise sagging moment.`,
     `Transverse distribution by Courbon's method — rigid deck, equal girder stiffness assumed.`,
     `Eccentricity applied: outermost lane centroid ${eccentricity.toFixed(2)} m from deck CL.`,
+    `Pedestrian load applies to walkways only — not to parapets.`,
+    `Total dead load UDL = ${totalDLUDL.toFixed(2)} kN/m (all girders + SIDL + premix + pedestrian).`,
     `All loads are CHARACTERISTIC (unfactored). Apply γf factors per BS 5400-1 for ULS/SLS design.`,
-    `Self weight: ${totalDLUDL.toFixed(2)} kN/m total over bridge width (all girders + surfacing + SIDL).`,
   ];
 
   return {

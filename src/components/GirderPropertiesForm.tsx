@@ -47,7 +47,8 @@ export function GirderPropertiesForm({ value, onChange }: Props) {
           type="text"
           value={value.customName}
           onChange={() => {}}
-          hint="Reference label for report"
+          onChangeText={v => set('customName', v)}
+          hint="Reference label for report (e.g. 'SY1400 Beam')"
         />
       )}
 
