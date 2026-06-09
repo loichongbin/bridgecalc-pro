@@ -58,11 +58,11 @@ export function Header({ darkMode, onToggleDark, onPrint, hasResults }: HeaderPr
           )}
 
           <a
-            href="https://www.standardsforhighways.co.uk/dmrb/search?q=bd+37"
+            href={`${import.meta.env.BASE_URL}bd3701.pdf`}
             target="_blank"
             rel="noopener noreferrer"
             className="btn-secondary text-xs gap-1.5 py-1.5 no-print"
-            title="BD 37/01 reference"
+            title="Open BD 37/01 PDF"
           >
             <BookOpen size={14} />
             <span className="hidden sm:inline">BD 37/01</span>
