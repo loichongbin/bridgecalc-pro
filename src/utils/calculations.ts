@@ -14,6 +14,10 @@ import {
   GirderProperties,
   DeadLoadInputs,
   HighwayLoadInputs,
+  PipeLoadInputs,
+  PipeMaterial,
+  PipeRun,
+  WaterLoadInputs,
   CalculationResults,
   DiagramPoint,
   LoadCaseResult,
@@ -21,6 +25,63 @@ import {
 } from '../types/bridge';
 
 const N_PTS = 121; // diagram resolution (points along span)
+
+// ─── Pipe & Water Loading ─────────────────────────────────────────────────────
+
+/** Unit weights of pipe materials (kN/m³). 'custom' uses PipeRun.customDensity. */
+export const PIPE_MATERIALS: Record<Exclude<PipeMaterial, 'custom'>, { label: string; density: number }> = {
+  'steel':        { label: 'Steel',                 density: 77.0 },
+  'ductile-iron': { label: 'Ductile iron',          density: 70.6 },
+  'hdpe':         { label: 'HDPE',                  density: 9.4 },
+  'grp':          { label: 'GRP',                   density: 18.6 },
+  'concrete':     { label: 'Reinforced concrete',   density: 24.0 },
+};
+
+export function pipeDensity(p: PipeRun): number {
+  return p.material === 'custom' ? p.customDensity : PIPE_MATERIALS[p.material].density;
+}
+
+/** Internal diameter (mm) */
+export function pipeInternalDiameter(p: PipeRun): number {
+  return Math.max(0, p.outerDiameter - 2 * p.wallThickness);
+}
+
+/** Self-weight of ONE pipe including attachment allowance (kN/m) */
+export function pipeSelfWeight(p: PipeRun): number {
+  const od = p.outerDiameter / 1000;
+  const id = pipeInternalDiameter(p) / 1000;
+  const shellArea = (Math.PI / 4) * (od * od - id * id);
+  return shellArea * pipeDensity(p) + p.attachmentLoad;
+}
+
+/** Weight of water filling ONE pipe running full (kN/m) */
+export function pipeWaterWeight(p: PipeRun, unitWeight: number): number {
+  const id = pipeInternalDiameter(p) / 1000;
+  return (Math.PI / 4) * id * id * unitWeight;
+}
+
+/** Total pipe self-weight UDL along the span (kN/m) */
+export function totalPipeUDL(pl: PipeLoadInputs): number {
+  if (!pl.enabled) return 0;
+  return pl.pipes.reduce((s, p) => s + p.quantity * pipeSelfWeight(p), 0);
+}
+
+/** Water carried inside the pipes (kN/m along span) */
+export function pipeContentsUDL(pl: PipeLoadInputs, wl: WaterLoadInputs): number {
+  if (!pl.enabled || !wl.pipeContentsEnabled) return 0;
+  return pl.pipes.reduce((s, p) => s + p.quantity * pipeWaterWeight(p, wl.unitWeight), 0);
+}
+
+/** Width (m) over which standing water acts */
+export function pondingWidth(wl: WaterLoadInputs, geo: BridgeGeometry): number {
+  return wl.pondingExtent === 'deck' ? geo.deckWidth : geo.carriagewayWidth;
+}
+
+/** Standing water on the deck (kN/m along span) */
+export function pondingUDL(wl: WaterLoadInputs, geo: BridgeGeometry): number {
+  if (!wl.pondingEnabled) return 0;
+  return (wl.pondingDepth / 1000) * wl.unitWeight * pondingWidth(wl, geo);
+}
 
 // ─── Beam Primitives ──────────────────────────────────────────────────────────
 
@@ -282,9 +343,26 @@ function validate(
   geo: BridgeGeometry,
   girder: GirderProperties,
   dl: DeadLoadInputs,
+  pl: PipeLoadInputs,
+  wl: WaterLoadInputs,
   hl: HighwayLoadInputs
 ): string[] {
   const errs: string[] = [];
+  if (pl.enabled) {
+    if (pl.pipes.length === 0) errs.push('Pipe loading is enabled but no pipes are defined.');
+    pl.pipes.forEach((p, i) => {
+      const name = p.label.trim() || `Pipe ${i + 1}`;
+      if (p.quantity < 1 || !Number.isInteger(p.quantity)) errs.push(`${name}: quantity must be a whole number ≥ 1.`);
+      if (p.outerDiameter <= 0) errs.push(`${name}: outside diameter must be greater than 0.`);
+      if (p.wallThickness <= 0) errs.push(`${name}: wall thickness must be greater than 0.`);
+      if (p.wallThickness * 2 >= p.outerDiameter) errs.push(`${name}: wall thickness must be less than half the outside diameter.`);
+      if (p.material === 'custom' && p.customDensity <= 0) errs.push(`${name}: material density must be greater than 0.`);
+      if (p.attachmentLoad < 0) errs.push(`${name}: attachment allowance cannot be negative.`);
+    });
+  }
+  if ((wl.pipeContentsEnabled || wl.pondingEnabled) && wl.unitWeight <= 0)
+    errs.push('Unit weight of water must be greater than 0.');
+  if (wl.pondingEnabled && wl.pondingDepth <= 0) errs.push('Standing water depth must be greater than 0.');
   if (geo.spanLength <= 0 || geo.spanLength > 300) errs.push('Span length must be between 0 and 300 m.');
   if (geo.numberOfGirders < 1 || geo.numberOfGirders > 12) errs.push('Number of girders must be 1–12.');
   if (geo.girderSpacing <= 0) errs.push('Girder spacing must be greater than 0.');
@@ -306,9 +384,11 @@ export function runBridgeAnalysis(
   geo: BridgeGeometry,
   girder: GirderProperties,
   dl: DeadLoadInputs,
+  pl: PipeLoadInputs,
+  wl: WaterLoadInputs,
   hl: HighwayLoadInputs
 ): CalculationResults {
-  const errors = validate(geo, girder, dl, hl);
+  const errors = validate(geo, girder, dl, pl, wl, hl);
   const emptyResult: LoadCaseResult = {
     label: '', ra: 0, rb: 0, maxMoment: 0, maxMomentPos: 0,
     maxShear: 0, totalLoad: 0, diagram: [],
@@ -320,6 +400,7 @@ export function runBridgeAnalysis(
       numberOfLanes: 0, haUDLPerLane: 0, haKELPerLane: 0,
       hbAxleLoad: { hb30: 0, hb45: 0 },
       deadLoadResult: emptyResult,
+      pipeResult: null, waterResult: null, pipeUDL: 0, waterUDL: 0,
       haResult: null, hb30Result: null, hb45Result: null,
       combinedHA: null, combinedHB30: null, combinedHB45: null,
       governingCase: '', governingCombined: emptyResult,
@@ -363,6 +444,37 @@ export function runBridgeAnalysis(
     totalLoad: dlEx.totalLoad,
     diagram: dlDiagram,
   };
+
+  // ── Pipe & Water Loading (UDLs along span) ───────────────────────────────
+  function udlCase(w: number, label: string): LoadCaseResult | null {
+    if (w <= 0) return null;
+    const diagram = udlDiagram(w, L);
+    const ex = diagramExtremes(diagram);
+    return {
+      label,
+      ra: ex.ra, rb: ex.rb,
+      maxMoment: ex.maxMoment,
+      maxMomentPos: ex.maxMomentPos,
+      maxShear: ex.maxAbsShear,
+      totalLoad: ex.totalLoad,
+      diagram,
+    };
+  }
+
+  const pipeUDL = totalPipeUDL(pl);
+  const pipeWaterUDL = pipeContentsUDL(pl, wl);
+  const deckWaterUDL = pondingUDL(wl, geo);
+  const waterUDL = pipeWaterUDL + deckWaterUDL;
+
+  const pipeResult  = udlCase(pipeUDL,  'Pipe Loading');
+  const waterResult = udlCase(waterUDL, 'Water Loading');
+
+  // Permanent actions superposed into every combination
+  const permanentDiagram = superpose(
+    [dlDiagram, pipeResult?.diagram, waterResult?.diagram].filter((d): d is DiagramPoint[] => !!d)
+  );
+  const permanentLabel =
+    'DL' + (pipeResult ? ' + Pipe' : '') + (waterResult ? ' + Water' : '');
 
   // ── HA Loading ────────────────────────────────────────────────────────────
   const haW = haUDLIntensity(L);          // kN/m per lane
@@ -447,9 +559,10 @@ export function runBridgeAnalysis(
     };
   }
 
-  // ── Combined DL + LL ─────────────────────────────────────────────────────
-  function combine(llResult: LoadCaseResult, label: string): LoadCaseResult {
-    const cDiag = superpose([dlDiagram, llResult.diagram]);
+  // ── Combined permanent + LL ──────────────────────────────────────────────
+  function combine(llResult: LoadCaseResult, llLabel: string): LoadCaseResult {
+    const label = `${permanentLabel} + ${llLabel}`;
+    const cDiag = superpose([permanentDiagram, llResult.diagram]);
     const ex = diagramExtremes(cDiag);
     return {
       label,
@@ -462,9 +575,9 @@ export function runBridgeAnalysis(
     };
   }
 
-  const combinedHA   = haResult   ? combine(haResult,   'DL + HA')   : null;
-  const combinedHB30 = hb30Result ? combine(hb30Result, 'DL + HB30') : null;
-  const combinedHB45 = hb45Result ? combine(hb45Result, 'DL + HB45') : null;
+  const combinedHA   = haResult   ? combine(haResult,   'HA')   : null;
+  const combinedHB30 = hb30Result ? combine(hb30Result, 'HB30') : null;
+  const combinedHB45 = hb45Result ? combine(hb45Result, 'HB45') : null;
 
   // ── Governing Case ───────────────────────────────────────────────────────
   const candidates = [combinedHA, combinedHB30, combinedHB45].filter(
@@ -537,6 +650,27 @@ export function runBridgeAnalysis(
     `Eccentricity applied: outermost lane centroid ${eccentricity.toFixed(2)} m from deck CL.`,
     `Pedestrian load applies to walkways only — not to parapets.`,
     `Total dead load UDL = ${totalDLUDL.toFixed(2)} kN/m (all girders + SIDL + premix + pedestrian).`,
+    ...(pipeResult
+      ? [
+          `Pipe loading = ${pipeUDL.toFixed(2)} kN/m along span: ` +
+            pl.pipes
+              .map((p, i) => `${p.quantity}× ${p.label.trim() || `Pipe ${i + 1}`} ` +
+                `(Ø${p.outerDiameter} × ${p.wallThickness} mm, ${pipeSelfWeight(p).toFixed(2)} kN/m each)`)
+              .join('; ') + '.',
+          `Pipes treated as a UDL over the full span and included in every combination as a permanent action.`,
+        ]
+      : []),
+    ...(waterResult
+      ? [
+          `Water loading = ${waterUDL.toFixed(2)} kN/m along span (γw = ${wl.unitWeight.toFixed(2)} kN/m³)` +
+            (pipeWaterUDL > 0 ? ` — pipes running full: ${pipeWaterUDL.toFixed(2)} kN/m` : '') +
+            (deckWaterUDL > 0
+              ? `${pipeWaterUDL > 0 ? ';' : ' —'} standing water ${wl.pondingDepth} mm deep over ` +
+                `${pondingWidth(wl, geo).toFixed(2)} m ${wl.pondingExtent === 'deck' ? 'deck' : 'carriageway'} width: ${deckWaterUDL.toFixed(2)} kN/m`
+              : '') + '.',
+          `Water load included in every combination as a permanent action (conservative).`,
+        ]
+      : []),
     `All loads are CHARACTERISTIC (unfactored). Apply γf factors per BS 5400-1 for ULS/SLS design.`,
   ];
 
@@ -548,6 +682,10 @@ export function runBridgeAnalysis(
     haKELPerLane: haKEL,
     hbAxleLoad: { hb30: 300, hb45: 450 },
     deadLoadResult,
+    pipeResult,
+    waterResult,
+    pipeUDL,
+    waterUDL,
     haResult,
     hb30Result,
     hb45Result,

@@ -44,6 +44,38 @@ export interface DeadLoadInputs {
   pedestrianLoad: number;     // kN/m² — footway loading
 }
 
+// ─── Pipe Loading (utility services carried by the deck) ─────────────────────
+
+export type PipeMaterial = 'steel' | 'ductile-iron' | 'hdpe' | 'grp' | 'concrete' | 'custom';
+
+export interface PipeRun {
+  id: string;
+  label: string;
+  quantity: number;         // number of identical pipes in this run
+  outerDiameter: number;    // mm
+  wallThickness: number;    // mm
+  material: PipeMaterial;
+  customDensity: number;    // kN/m³ — used when material = 'custom'
+  attachmentLoad: number;   // kN/m per pipe — brackets, lining, insulation, fittings
+}
+
+export interface PipeLoadInputs {
+  enabled: boolean;
+  pipes: PipeRun[];
+}
+
+// ─── Water Loading ────────────────────────────────────────────────────────────
+
+export type PondingExtent = 'carriageway' | 'deck';
+
+export interface WaterLoadInputs {
+  unitWeight: number;            // kN/m³ — γw
+  pipeContentsEnabled: boolean;  // pipes assumed running full
+  pondingEnabled: boolean;       // standing water on deck (blocked drainage)
+  pondingDepth: number;          // mm
+  pondingExtent: PondingExtent;
+}
+
 // ─── Highway Loading ──────────────────────────────────────────────────────────
 
 export type LoadCaseType = 'HA' | 'HB30' | 'HB45';
@@ -100,6 +132,10 @@ export interface CalculationResults {
 
   // Per-case results
   deadLoadResult: LoadCaseResult;
+  pipeResult: LoadCaseResult | null;   // null when no pipe load applied
+  waterResult: LoadCaseResult | null;  // null when no water load applied
+  pipeUDL: number;                     // kN/m along span
+  waterUDL: number;                    // kN/m along span
   haResult: LoadCaseResult | null;
   hb30Result: LoadCaseResult | null;
   hb45Result: LoadCaseResult | null;
@@ -130,5 +166,7 @@ export interface AppInputs {
   geometry: BridgeGeometry;
   girderProps: GirderProperties;
   deadLoads: DeadLoadInputs;
+  pipeLoads: PipeLoadInputs;
+  waterLoads: WaterLoadInputs;
   highwayLoads: HighwayLoadInputs;
 }

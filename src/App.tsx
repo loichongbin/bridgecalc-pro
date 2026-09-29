@@ -4,9 +4,10 @@ import { InputPanel } from './components/InputPanel';
 import { ResultsPanel } from './components/ResultsPanel';
 import {
   BridgeGeometry, GirderProperties, DeadLoadInputs,
-  HighwayLoadInputs, CalculationResults,
+  HighwayLoadInputs, CalculationResults, PipeLoadInputs, WaterLoadInputs,
 } from './types/bridge';
 import { runBridgeAnalysis } from './utils/calculations';
+import { newPipeRun } from './components/PipeLoadForm';
 
 // ─── Default Inputs ───────────────────────────────────────────────────────────
 
@@ -37,6 +38,19 @@ const DEFAULT_DEAD_LOADS: DeadLoadInputs = {
   premixDensity: 24,
   pedestrianEnabled: false,
   pedestrianLoad: 5,
+};
+
+const DEFAULT_PIPES: PipeLoadInputs = {
+  enabled: false,
+  pipes: [{ ...newPipeRun(1), label: 'Water main' }],
+};
+
+const DEFAULT_WATER: WaterLoadInputs = {
+  unitWeight: 9.81,
+  pipeContentsEnabled: true,
+  pondingEnabled: false,
+  pondingDepth: 50,
+  pondingExtent: 'carriageway',
 };
 
 const DEFAULT_HIGHWAY: HighwayLoadInputs = {
@@ -72,6 +86,8 @@ export default function App() {
   const [geometry,     setGeometry]     = useState<BridgeGeometry>(    saved?.geometry     ?? DEFAULT_GEOMETRY);
   const [girderProps,  setGirderProps]  = useState<GirderProperties>(   saved?.girderProps  ?? DEFAULT_GIRDER);
   const [deadLoads,    setDeadLoads]    = useState<DeadLoadInputs>(     saved?.deadLoads    ?? DEFAULT_DEAD_LOADS);
+  const [pipeLoads,    setPipeLoads]    = useState<PipeLoadInputs>(     saved?.pipeLoads    ?? DEFAULT_PIPES);
+  const [waterLoads,   setWaterLoads]   = useState<WaterLoadInputs>(    saved?.waterLoads   ?? DEFAULT_WATER);
   const [highwayLoads, setHighwayLoads] = useState<HighwayLoadInputs>(  saved?.highwayLoads ?? DEFAULT_HIGHWAY);
   const [results,      setResults]      = useState<CalculationResults | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
@@ -87,8 +103,8 @@ export default function App() {
 
   // ── Persist inputs on change ──────────────────────────────────────────────
   useEffect(() => {
-    saveInputs({ geometry, girderProps, deadLoads, highwayLoads });
-  }, [geometry, girderProps, deadLoads, highwayLoads]);
+    saveInputs({ geometry, girderProps, deadLoads, pipeLoads, waterLoads, highwayLoads });
+  }, [geometry, girderProps, deadLoads, pipeLoads, waterLoads, highwayLoads]);
 
   // ── Calculate ─────────────────────────────────────────────────────────────
   const handleCalculate = useCallback(() => {
@@ -96,7 +112,7 @@ export default function App() {
     // Run synchronously but defer to allow UI to update (spinner)
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        const res = runBridgeAnalysis(geometry, girderProps, deadLoads, highwayLoads);
+        const res = runBridgeAnalysis(geometry, girderProps, deadLoads, pipeLoads, waterLoads, highwayLoads);
         setResults(res);
         setIsCalculating(false);
         // Scroll results into view on mobile
@@ -105,7 +121,7 @@ export default function App() {
         }
       });
     });
-  }, [geometry, girderProps, deadLoads, highwayLoads]);
+  }, [geometry, girderProps, deadLoads, pipeLoads, waterLoads, highwayLoads]);
 
   // ── Print ─────────────────────────────────────────────────────────────────
   const handlePrint = useCallback(() => {
@@ -132,10 +148,14 @@ export default function App() {
             geometry={geometry}
             girderProps={girderProps}
             deadLoads={deadLoads}
+            pipeLoads={pipeLoads}
+            waterLoads={waterLoads}
             highwayLoads={highwayLoads}
             onGeometryChange={setGeometry}
             onGirderChange={setGirderProps}
             onDeadLoadChange={setDeadLoads}
+            onPipeLoadChange={setPipeLoads}
+            onWaterLoadChange={setWaterLoads}
             onHighwayLoadChange={setHighwayLoads}
             onCalculate={handleCalculate}
             isCalculating={isCalculating}
