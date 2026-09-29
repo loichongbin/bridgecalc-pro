@@ -85,6 +85,8 @@ export function LoadingDiagram({ results, geometry, highwayLoads, darkMode }: Pr
           <line x1={padL} y1={padT - 4} x2={padL + beamLen} y2={padT - 4} stroke={arrowColor} strokeWidth={1.5} />
           <text x={padL + beamLen / 2} y={padT - 10} textAnchor="middle" fontSize={10} fill={arrowColor} fontFamily="monospace">
             DL = {dlW.toFixed(1)} kN/m
+            {results.pipeUDL > 0 && ` + Pipe ${results.pipeUDL.toFixed(1)} kN/m`}
+            {results.waterUDL > 0 && ` + Water ${results.waterUDL.toFixed(1)} kN/m`}
           </text>
 
           {/* ── HA UDL (if active) ── */}
@@ -199,7 +201,8 @@ export function LoadingDiagram({ results, geometry, highwayLoads, darkMode }: Pr
       {/* Legend */}
       <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-500 dark:text-gray-400 px-1">
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-0.5 bg-gray-400 inline-block" /> Dead loads (DL)
+          <span className="w-3 h-0.5 bg-gray-400 inline-block" />
+          {results.pipeUDL > 0 || results.waterUDL > 0 ? 'Permanent loads (DL, pipes, water)' : 'Dead loads (DL)'}
         </span>
         {showHA && !showHB && (
           <span className="flex items-center gap-1.5">

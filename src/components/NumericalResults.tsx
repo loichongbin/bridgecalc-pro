@@ -1,7 +1,7 @@
 import React from 'react';
 import { Activity, ArrowDownToLine, Zap, BarChart3, Award } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { CalculationResults } from '../types/bridge';
+import { CalculationResults, LoadCaseResult } from '../types/bridge';
 import { StatCard } from './ui/Card';
 
 interface Props {
@@ -14,7 +14,11 @@ function fmt(v: number, d = 2) {
 
 export function NumericalResults({ results }: Props) {
   const gov = results.governingCombined;
-  const dl  = results.deadLoadResult;
+  const permanentCases = [
+    results.deadLoadResult,
+    results.pipeResult,
+    results.waterResult,
+  ].filter((c): c is LoadCaseResult => c !== null);
 
   // Table of all load cases
   const allCases = [
@@ -97,18 +101,20 @@ export function NumericalResults({ results }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {/* Dead load row */}
-                <tr className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750">
-                  <td className="px-3 py-2.5">
-                    <span className="badge-gray">{dl.label}</span>
-                  </td>
-                  <td className="px-3 py-2.5 engineering-value">{fmt(dl.ra)}</td>
-                  <td className="px-3 py-2.5 engineering-value">{fmt(dl.rb)}</td>
-                  <td className="px-3 py-2.5 engineering-value">{fmt(dl.maxMoment)}</td>
-                  <td className="px-3 py-2.5 engineering-value">{fmt(dl.maxMomentPos)}</td>
-                  <td className="px-3 py-2.5 engineering-value">{fmt(dl.maxShear)}</td>
-                  <td className="px-3 py-2.5 engineering-value">{fmt(dl.totalLoad)}</td>
-                </tr>
+                {/* Individual permanent load rows */}
+                {permanentCases.map(pc => (
+                  <tr key={pc.label} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750">
+                    <td className="px-3 py-2.5">
+                      <span className="badge-gray whitespace-nowrap">{pc.label}</span>
+                    </td>
+                    <td className="px-3 py-2.5 engineering-value">{fmt(pc.ra)}</td>
+                    <td className="px-3 py-2.5 engineering-value">{fmt(pc.rb)}</td>
+                    <td className="px-3 py-2.5 engineering-value">{fmt(pc.maxMoment)}</td>
+                    <td className="px-3 py-2.5 engineering-value">{fmt(pc.maxMomentPos)}</td>
+                    <td className="px-3 py-2.5 engineering-value">{fmt(pc.maxShear)}</td>
+                    <td className="px-3 py-2.5 engineering-value">{fmt(pc.totalLoad)}</td>
+                  </tr>
+                ))}
                 {allCases.map((lc, i) => {
                   const isGov = lc!.label === results.governingCase;
                   return (

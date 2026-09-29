@@ -1,11 +1,16 @@
 import React from 'react';
-import { Ruler, Layers, Weight, Truck, Calculator, AlertCircle } from 'lucide-react';
+import { Ruler, Layers, Weight, Truck, Calculator, AlertCircle, Cylinder, Droplets } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { BridgeGeometry, GirderProperties, DeadLoadInputs, HighwayLoadInputs } from '../types/bridge';
+import {
+  BridgeGeometry, GirderProperties, DeadLoadInputs, HighwayLoadInputs,
+  PipeLoadInputs, WaterLoadInputs,
+} from '../types/bridge';
 import { CollapsibleSection } from './ui/CollapsibleSection';
 import { BridgeGeometryForm } from './BridgeGeometryForm';
 import { GirderPropertiesForm } from './GirderPropertiesForm';
 import { DeadLoadForm } from './DeadLoadForm';
+import { PipeLoadForm } from './PipeLoadForm';
+import { WaterLoadForm } from './WaterLoadForm';
 import { HighwayLoadForm } from './HighwayLoadForm';
 import { haUDLIntensity } from '../utils/calculations';
 
@@ -13,10 +18,14 @@ interface Props {
   geometry: BridgeGeometry;
   girderProps: GirderProperties;
   deadLoads: DeadLoadInputs;
+  pipeLoads: PipeLoadInputs;
+  waterLoads: WaterLoadInputs;
   highwayLoads: HighwayLoadInputs;
   onGeometryChange: (v: BridgeGeometry) => void;
   onGirderChange: (v: GirderProperties) => void;
   onDeadLoadChange: (v: DeadLoadInputs) => void;
+  onPipeLoadChange: (v: PipeLoadInputs) => void;
+  onWaterLoadChange: (v: WaterLoadInputs) => void;
   onHighwayLoadChange: (v: HighwayLoadInputs) => void;
   onCalculate: () => void;
   isCalculating: boolean;
@@ -24,9 +33,9 @@ interface Props {
 }
 
 export function InputPanel({
-  geometry, girderProps, deadLoads, highwayLoads,
-  onGeometryChange, onGirderChange, onDeadLoadChange, onHighwayLoadChange,
-  onCalculate, isCalculating, errors,
+  geometry, girderProps, deadLoads, pipeLoads, waterLoads, highwayLoads,
+  onGeometryChange, onGirderChange, onDeadLoadChange, onPipeLoadChange, onWaterLoadChange,
+  onHighwayLoadChange, onCalculate, isCalculating, errors,
 }: Props) {
   const haUDL = haUDLIntensity(geometry.spanLength);
 
@@ -72,6 +81,27 @@ export function InputPanel({
             walkwaysEnabled={geometry.walkwaysEnabled}
             leftWalkwayWidth={geometry.leftWalkwayWidth}
             rightWalkwayWidth={geometry.rightWalkwayWidth}
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Pipe Loading"
+          icon={<Cylinder size={16} />}
+          defaultOpen
+        >
+          <PipeLoadForm value={pipeLoads} onChange={onPipeLoadChange} />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Water Loading"
+          icon={<Droplets size={16} />}
+          defaultOpen
+        >
+          <WaterLoadForm
+            value={waterLoads}
+            onChange={onWaterLoadChange}
+            pipeLoads={pipeLoads}
+            geometry={geometry}
           />
         </CollapsibleSection>
 
